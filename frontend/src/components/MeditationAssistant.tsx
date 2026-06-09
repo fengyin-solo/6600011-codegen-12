@@ -194,7 +194,6 @@ const CompletionOverlay: React.FC = () => {
         <div
           style={{
             fontSize: '13px',
-            opacity: 0.7,
             marginBottom: '24px',
             opacity: animStep >= 1 ? 0.7 : 0,
             transition: 'opacity 0.5s ease',
