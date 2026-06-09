@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { EEGData, BandPower, BrainState, CorrelationData, Recording, RecordingFrame, PlaybackState } from '../types';
+import { EEGData, BandPower, BrainState, CorrelationData, Recording, RecordingFrame, PlaybackState, MeditationSession, MeditationSnapshot, RhythmPrompt, RhythmPhase } from '../types';
 
 const STORAGE_KEY = 'eeg_recordings';
 
@@ -32,12 +32,23 @@ interface EEGState {
   playbackMode: boolean;
   activeRecording: Recording | null;
   playbackState: PlaybackState;
+  isMeditating: boolean;
+  meditationSession: MeditationSession | null;
+  currentRhythm: RhythmPrompt | null;
+  rhythmPhaseStart: number;
+  showMeditationCompletion: boolean;
   setEEGData: (d: EEGData | null) => void;
   setChannel: (c: string) => void;
   setBandPower: (b: BandPower | null) => void;
   setStreaming: (v: boolean) => void;
   setBrainState: (s: BrainState | null) => void;
   setCorrelationData: (c: CorrelationData | null) => void;
+  startMeditation: () => void;
+  stopMeditation: () => void;
+  updateMeditationSnapshot: (brainState: BrainState) => void;
+  setRhythm: (rhythm: RhythmPrompt) => void;
+  setRhythmPhaseStart: (time: number) => void;
+  dismissMeditationCompletion: () => void;
   startRecording: () => void;
   stopRecording: (name: string) => void;
   addRecordingFrame: (eeg: EEGData, bands: BandPower, brainState: BrainState) => void;
@@ -67,12 +78,92 @@ export const useEEGStore = create<EEGState>((set, get) => ({
     currentTime: 0,
     currentFrame: null,
   },
+  isMeditating: false,
+  meditationSession: null,
+  currentRhythm: null,
+  rhythmPhaseStart: 0,
+  showMeditationCompletion: false,
   setEEGData: (d) => set({ eegData: d }),
   setChannel: (c) => set({ selectedChannel: c }),
   setBandPower: (b) => set({ bandPower: b }),
   setStreaming: (v) => set({ isStreaming: v }),
   setBrainState: (s) => set({ brainState: s }),
   setCorrelationData: (c) => set({ correlationData: c }),
+  startMeditation: () => {
+    const session: MeditationSession = {
+      id: `med_${Date.now()}`,
+      startTime: Date.now(),
+      endTime: null,
+      duration: 0,
+      snapshots: [],
+      avgRelaxation: 0,
+      peakRelaxation: 0,
+      improvement: 0,
+      completed: false,
+    };
+    set({
+      isMeditating: true,
+      meditationSession: session,
+      currentRhythm: { phase: 'inhale', durationSec: 4, label: '吸气', instruction: '缓缓吸气...' },
+      rhythmPhaseStart: Date.now(),
+      showMeditationCompletion: false,
+    });
+  },
+  stopMeditation: () => {
+    const { meditationSession } = get();
+    if (!meditationSession || meditationSession.snapshots.length === 0) {
+      set({ isMeditating: false, meditationSession: null, currentRhythm: null, rhythmPhaseStart: 0 });
+      return;
+    }
+    const snapshots = meditationSession.snapshots;
+    const relaxationValues = snapshots.map(s => s.relaxation);
+    const avgRelaxation = relaxationValues.reduce((a, b) => a + b, 0) / relaxationValues.length;
+    const peakRelaxation = Math.max(...relaxationValues);
+    const firstHalf = relaxationValues.slice(0, Math.floor(relaxationValues.length / 2));
+    const secondHalf = relaxationValues.slice(Math.floor(relaxationValues.length / 2));
+    const avgFirst = firstHalf.length > 0 ? firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length : 0;
+    const avgSecond = secondHalf.length > 0 ? secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length : 0;
+    const improvement = Math.round((avgSecond - avgFirst) * 10) / 10;
+    const endTime = Date.now();
+    const duration = (endTime - meditationSession.startTime) / 1000;
+    const completedSession: MeditationSession = {
+      ...meditationSession,
+      endTime,
+      duration,
+      avgRelaxation: Math.round(avgRelaxation * 10) / 10,
+      peakRelaxation: Math.round(peakRelaxation * 10) / 10,
+      improvement,
+      completed: true,
+    };
+    set({
+      isMeditating: false,
+      meditationSession: completedSession,
+      currentRhythm: null,
+      rhythmPhaseStart: 0,
+      showMeditationCompletion: true,
+    });
+  },
+  updateMeditationSnapshot: (brainState) => {
+    const { isMeditating, meditationSession, currentRhythm } = get();
+    if (!isMeditating || !meditationSession || !currentRhythm) return;
+    const snapshot: MeditationSnapshot = {
+      timestamp: Date.now(),
+      relaxation: brainState.relaxation,
+      focus: brainState.focus,
+      fatigue: brainState.fatigue,
+      rhythmPhase: currentRhythm.phase,
+    };
+    set({
+      meditationSession: {
+        ...meditationSession,
+        snapshots: [...meditationSession.snapshots, snapshot],
+        duration: (Date.now() - meditationSession.startTime) / 1000,
+      },
+    });
+  },
+  setRhythm: (rhythm) => set({ currentRhythm: rhythm }),
+  setRhythmPhaseStart: (time) => set({ rhythmPhaseStart: time }),
+  dismissMeditationCompletion: () => set({ showMeditationCompletion: false, meditationSession: null }),
   startRecording: () => {
     const { selectedChannel } = get();
     set({

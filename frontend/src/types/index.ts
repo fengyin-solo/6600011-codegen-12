@@ -37,6 +37,43 @@ export interface Recording {
   frames: RecordingFrame[];
 }
 
+export type RhythmPhase = 'inhale' | 'hold' | 'exhale' | 'rest';
+
+export interface RhythmPrompt {
+  phase: RhythmPhase;
+  durationSec: number;
+  label: string;
+  instruction: string;
+}
+
+export interface MeditationSnapshot {
+  timestamp: number;
+  relaxation: number;
+  focus: number;
+  fatigue: number;
+  rhythmPhase: RhythmPhase;
+}
+
+export interface MeditationSession {
+  id: string;
+  startTime: number;
+  endTime: number | null;
+  duration: number;
+  snapshots: MeditationSnapshot[];
+  avgRelaxation: number;
+  peakRelaxation: number;
+  improvement: number;
+  completed: boolean;
+}
+
+export interface MeditationState {
+  isMeditating: boolean;
+  currentSession: MeditationSession | null;
+  currentRhythm: RhythmPrompt | null;
+  rhythmPhaseStart: number;
+  showCompletion: boolean;
+}
+
 export interface PlaybackState {
   isPlaying: boolean;
   currentTime: number;
